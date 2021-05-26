@@ -1,30 +1,29 @@
 package daos
 
-import cats.data.EitherT
-import cats.implicits._
 import models.TodoModel
-import models.TodoModel.bsonHandler
+import cats.implicits._
+import cats.data.EitherT
+import play.api.libs.json._
 import play.modules.reactivemongo.ReactiveMongoApi
+import reactivemongo.play.json._
+import collection._
 import reactivemongo.api.Cursor
-import reactivemongo.api.bson.collection.BSONCollection
-import reactivemongo.api.bson._
-import reactivemongo.api.bson.{BSONDocument, BSONObjectID}
+import reactivemongo.bson.BSONObjectID
 
 import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
 
 class TodoDao @Inject()(
-                         implicit executionContext: ExecutionContext,
-                         val reactiveMongoApi: ReactiveMongoApi
-                       ) {
+  implicit executionContext: ExecutionContext,
+  val reactiveMongoApi: ReactiveMongoApi
+) {
 
   private def todos =
-    reactiveMongoApi.database.map(_.collection[BSONCollection]("todos"))
+    reactiveMongoApi.database.map(_.collection[JSONCollection]("todos"))
 
   def getAllTodos: Future[List[TodoModel]] = {
     val cursor = todos.map { todos =>
-      implicit val bsonHandler = Macros.handler[TodoModel] // TODO Remove
-      todos.find(BSONDocument(), Option.empty[TodoModel])
+      todos.find(Json.obj(), Option.empty[JsObject])
         .cursor[TodoModel]()
     }
 
@@ -40,13 +39,12 @@ class TodoDao @Inject()(
       .get
 
   def getTodoById(id: String): EitherT[Future, DaoError, TodoModel] = {
-    implicit val bsonHandler = Macros.handler[TodoModel] // TODO Remove
     EitherT.fromEither[Future](parseId(id))
       .leftWiden[DaoError]
       .flatMap { objectId =>
         EitherT.right[DaoError](todos)
           .map { todos =>
-            todos.find(BSONDocument("_id" -> objectId))
+            todos.find(Json.obj("_id" -> objectId), Option.empty[JsObject])
               .cursor[TodoModel]()
           }
       }

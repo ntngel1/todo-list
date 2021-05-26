@@ -1,7 +1,8 @@
 package models
 
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.api.bson.{BSONHandler, BSONObjectID, Macros}
+import reactivemongo.play.json._ // DO NOT REMOVE
+import reactivemongo.bson.BSONObjectID
 
 case class TodoModel(
   _id: Option[BSONObjectID],
@@ -11,6 +12,5 @@ case class TodoModel(
 )
 
 object TodoModel {
-  //implicit val jsonFormat: OFormat[TodoModel] = Json.format
-  implicit val bsonHandler: BSONHandler[TodoModel] = Macros.handler
+  implicit val jsonFormat: OFormat[TodoModel] = Json.format
 }
