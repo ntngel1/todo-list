@@ -1,2 +1,3 @@
-GET     /todos                      controllers.TodoController.getAllTodos()
-GET     /todos/:id                  controllers.TodoController.getTodo(id: String)
+GET     /todos                      controllers.todo.TodoController.getAllTodos()
+GET     /todos/:id                  controllers.todo.TodoController.getTodo(id: String)
+POST    /todos                      controllers.todo.TodoController.createTodo()

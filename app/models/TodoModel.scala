@@ -5,7 +5,7 @@ import reactivemongo.play.json._ // DO NOT REMOVE
 import reactivemongo.bson.BSONObjectID
 
 case class TodoModel(
-  _id: Option[BSONObjectID],
+  _id: BSONObjectID,
   text: String,
   isCompleted: Boolean,
   isDeleted: Boolean
