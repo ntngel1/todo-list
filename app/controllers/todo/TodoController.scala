@@ -5,12 +5,13 @@ import javax.inject.Inject
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 
-import cats.data.EitherT
 import cats.implicits._
-import controllers.{ControllerError, JsonBodyParsingError, NoRequestBodyError, PersistenceLayerError}
-import daos.TodoDao
-import play.api.libs.json.{JsError, JsSuccess, Json}
+import controllers.ControllerError
+import daos.todo.TodoDao
+import models.TodoModel
 import play.api.mvc._
+import utils.ContentToResultMappingUtil._
+import utils.{ContentToResultMappingUtil, ControllerErrorToResultMapper, DaoErrorToControllerErrorMapper, JsonParsingUtil}
 
 class TodoController @Inject()(
   components: ControllerComponents,
@@ -19,47 +20,80 @@ class TodoController @Inject()(
 
   def getAllTodos: Action[AnyContent] = Action.async {
     todoDao.getAllTodos
-      .map { todos =>
-        Ok(Json.toJson(todos))
-      }
+      .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      .fold(
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[List[TodoModel]]
+      )
   }
 
   def getTodo(id: String): Action[AnyContent] = Action.async {
     todoDao.getTodoById(id)
+      .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
       .fold(
-        _ => InternalServerError("error"), // TODO: return corresponding error.
-        //       Maybe create some Response object with encapsulated error?
-        todoModel => Ok(Json.toJson(todoModel))
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[TodoModel]
       )
   }
 
-  def createTodo: Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    EitherT.fromOption[Future](request.body.asJson, NoRequestBodyError)
-      .leftWiden[ControllerError]
-      .map(Json.fromJson[CreateTodoRequestBody](_))
-      .flatMap { jsonParsingResult =>
-        jsonParsingResult match {
-          case JsSuccess(value, _) => EitherT.rightT[Future, ControllerError](value)
-          case JsError(errors) => EitherT.leftT[Future, CreateTodoRequestBody](JsonBodyParsingError(errors.mkString(", ")))
-                                         .leftWiden[ControllerError]
-        }
-      }
+  def createTodo(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
+    JsonParsingUtil.parse[CreateTodoRequestBody](request)
+      .toEitherT[Future]
       .flatMap { requestBody =>
         todoDao.createTodo(requestBody.text)
-          .leftMap(_ => PersistenceLayerError) // TODO: return corresponding error
-          .leftWiden[ControllerError]
+          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
       }
       .fold(
-        _ => InternalServerError("create todo error"), // TODO: return corresponding error
-        todoModel => Ok(Json.toJson(todoModel))
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[TodoModel]
       )
   }
 
-  /*def updateTodo: Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    throw new NotImplementedError()
+  def updateTodo(id: String): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
+    JsonParsingUtil.parse[UpdateTodoRequestBody](request)
+      .toEitherT[Future]
+      .flatMap { requestBody =>
+        todoDao.updateTodo(id, requestBody.toTodoPayload)
+          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      }
+      .fold(
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[Unit]
+      )
+  }
+
+  def updateTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
+    JsonParsingUtil.parse[UpdateTodosRequestBody](request)
+      .toEitherT[Future]
+      .flatMap { requestBody =>
+        todoDao.updateTodos(requestBody.toTodoPayload)
+          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      }
+      .fold(
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[Unit]
+      )
   }
 
   def deleteTodo(id: String): Action[AnyContent] = Action.async {
-    throw new NotImplementedError()
-  }*/
+    todoDao.deleteTodo(id)
+      .leftMap(DaoErrorToControllerErrorMapper)
+      .fold(
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[Unit]
+      )
+  }
+
+  def deleteTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
+    JsonParsingUtil.parse[DeleteTodosRequestBody](request)
+      .toEitherT[Future]
+      .flatMap { requestBody =>
+        todoDao.deleteTodos(requestBody.toTodoPayload)
+          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      }
+      .fold(
+        ControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[Unit]
+      )
+  }
 }
