@@ -5,7 +5,7 @@ import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
 
 import cats.data.EitherT
-import cats.implicits.toBifunctorOps
+import cats.implicits._
 import daos._
 import models.TodoModel
 import play.api.libs.json._
@@ -14,6 +14,7 @@ import reactivemongo.api.Cursor
 import reactivemongo.bson.BSONObjectID
 import reactivemongo.play.json._
 import reactivemongo.play.json.collection._
+import utils.BSONObjectIDUtil
 import utils.ReactiveMongoErrorsUtil._
 
 class TodoDao @Inject()(
@@ -24,35 +25,35 @@ class TodoDao @Inject()(
   private def todos =
     reactiveMongoApi.database.map(_.collection[JSONCollection]("todos"))
 
-  private def parseId(id: String): Either[InvalidIdError, BSONObjectID] =
-    BSONObjectID.parse(id)
-      .map(Right(_))
-      .recover { case throwable => Left(InvalidIdError(throwable.getMessage)) }
-      .get
-
   def getAllTodos: EitherT[Future, DaoError, List[TodoModel]] = {
     EitherT.right[DaoError](todos)
       .semiflatMap { todos =>
         todos.find(TodoPayload(isDeleted = Option(false)), Option.empty[JsObject])
-          .cursor[TodoModel]()
-          .collect[List](-1, Cursor.FailOnError[List[TodoModel]]())
-      } // TODO: Handle Future exceptions
+          .cursor[TodoMongoModel]()
+          .collect[List](-1, Cursor.FailOnError[List[TodoMongoModel]]())
+      }
+      .map { todoMongoModels =>
+        todoMongoModels.map(_.toTodoModel)
+      }
   }
 
   def getTodoById(id: String): EitherT[Future, DaoError, TodoModel] = {
-    EitherT.fromEither[Future](parseId(id))
+    BSONObjectIDUtil.parseEither(id)
+      .toEitherT[Future]
       .leftWiden[DaoError]
       .flatMap { objectId =>
         EitherT.right[DaoError](todos)
           .semiflatMap { todos =>
             todos.find(TodoPayload(_id = Option(objectId), isDeleted = Option(false)), Option.empty[JsObject])
-              .cursor[TodoModel]()
+              .cursor[TodoMongoModel]()
               .headOption
           }
       }
-      .flatMap { todoModel =>
-        EitherT.fromOption(todoModel, NotFoundError)
+      .flatMap { todoMongoModel =>
+        EitherT.fromOption[Future](todoMongoModel, NotFoundError)
+          .leftWiden[DaoError]
       }
+      .map(_.toTodoModel)
   }
 
   def createTodo(text: String): EitherT[Future, DaoError, TodoModel] = {
@@ -61,7 +62,7 @@ class TodoDao @Inject()(
         val objectId = BSONObjectID.generate()
         todos.insert(ordered = false)
           .one(
-            TodoModel(
+            TodoMongoModel(
               _id = objectId,
               text = text,
               isCompleted = false,
@@ -74,21 +75,25 @@ class TodoDao @Inject()(
         EitherT.right[DaoError](todos)
           .semiflatMap { todos =>
             todos.find(TodoPayload(_id = Option(objectId)), Option.empty[JsObject])
-              .cursor[TodoModel]()
+              .cursor[TodoMongoModel]()
               .headOption
           }
       }
-      .flatMap { todoOption =>
-        EitherT.fromOption[Future](todoOption, NotFoundError)
+      .flatMap { todoMongoModel =>
+        EitherT.fromOption[Future](todoMongoModel, NotFoundError)
+          .leftWiden[DaoError]
       }
+      .map(_.toTodoModel)
   }
 
   def updateTodo(id: String, payload: TodoPayload): EitherT[Future, DaoError, Unit] = {
-    EitherT.fromEither[Future](parseId(id))
+    BSONObjectIDUtil.parseEither(id)
+      .toEitherT[Future]
       .leftWiden[DaoError]
       .flatMap { objectId =>
         EitherT.right[DaoError](todos)
           .semiflatMap { todos =>
+            // FIXME: Problem that it doesn't throw error if no elements match given selector!!!
             todos.update(ordered = false)
               .one(
                 TodoPayload(_id = Option(objectId), isDeleted = Option(false)),
@@ -119,7 +124,8 @@ class TodoDao @Inject()(
   }
 
   def deleteTodo(id: String): EitherT[Future, DaoError, Unit] = {
-    EitherT.fromEither[Future](parseId(id))
+    BSONObjectIDUtil.parseEither(id)
+      .toEitherT[Future]
       .leftWiden[DaoError]
       .flatMap { objectId =>
         EitherT.right[DaoError](todos)
