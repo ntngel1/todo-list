@@ -19,7 +19,6 @@ class TodoController @Inject()(
 ) extends AbstractController(components) {
 
   def getAllTodos: Action[AnyContent] = Action.async {
-    throw new IllegalStateException("TEST THROWN!!!")
     todoDao.getAllTodos
       .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
       .fold(
