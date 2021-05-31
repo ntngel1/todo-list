@@ -13,7 +13,6 @@ libraryDependencies += guice
 libraryDependencies += "org.typelevel" %% "cats-core" % "2.6.1"
 
 // Play Framework
-libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "5.0.0" % Test
 libraryDependencies += "com.typesafe.play" %% "play-json" % "2.9.2"
 
 // ReactiveMongo
@@ -27,4 +26,9 @@ libraryDependencies += "org.reactivemongo" %% "play2-reactivemongo" % "0.20.13-p
 libraryDependencies += "org.reactivemongo" %% "reactivemongo-play-json-compat" % "1.0.4-play28"
 
 // Sentry
-libraryDependencies += "io.sentry" % "sentry" % "4.3.0"
+//libraryDependencies += "io.sentry" % "sentry" % "4.3.0"
+libraryDependencies +=   "io.sentry" % "sentry-logback" % "1.7.16"
+
+// Testing
+libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "5.0.0" % Test
+libraryDependencies += "org.mockito" % "mockito-core" % "3.10.0" % Test

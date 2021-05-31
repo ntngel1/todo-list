@@ -7,12 +7,12 @@ sealed abstract class ControllerError {
   val errorMessage: String
 }
 
-object NoRequestBodyError extends ControllerError {
+case object NoRequestBodyError extends ControllerError {
   override val errorCode: Int = 1
   override val errorMessage: String = "No request body"
 }
 
-object ItemNotFoundError extends ControllerError {
+case object ItemNotFoundError extends ControllerError {
   override val errorCode: Int = 2
   override val errorMessage: String = "Unable to find item"
 }
