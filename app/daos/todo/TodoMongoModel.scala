@@ -3,7 +3,7 @@ package daos.todo
 import daos.InvalidIdError
 import models.TodoModel
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.play.json._
+import reactivemongo.play.json._ // DO NOT REMOVE
 import reactivemongo.bson.BSONObjectID
 import utils.BSONObjectIDUtil
 

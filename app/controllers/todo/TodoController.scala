@@ -23,7 +23,7 @@ class TodoController @Inject()(
       .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
       .fold(
         ControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[List[TodoModel]]
+        ContentToResultMappingUtil.map[Seq[TodoModel]]
       )
   }
 
@@ -88,12 +88,13 @@ class TodoController @Inject()(
     JsonParsingUtil.parse[DeleteTodosRequestBody](request)
       .toEitherT[Future]
       .flatMap { requestBody =>
-        todoDao.deleteTodos(requestBody.toTodoPayload)
+        todoDao.deleteTodos(requestBody.toTodoSelector)
           .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
       }
       .fold(
         ControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit]
+        ContentToResultMappingUtil.map[Unit] // FIXME: maybe there is some more beautiful way like ContentToResultMapper[T]
+                                             //        but I don't know how to implement clean and nice T-parametrized object
       )
   }
 }

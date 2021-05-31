@@ -6,7 +6,7 @@ import play.api.mvc.Result
 import play.api.mvc.Results.Ok
 
 object ContentToResultMappingUtil {
-  implicit val unitWrites: Writes[Unit] = (_: Unit) => JsNull
+  implicit val unitWrites: Writes[Unit] = (_: Unit) => JsNull // crutch to serialize Unit
 
   def map[T](content: T)(implicit writes: Writes[T]): Result = Ok(Json.toJson(SuccessResponse(content)))
 }

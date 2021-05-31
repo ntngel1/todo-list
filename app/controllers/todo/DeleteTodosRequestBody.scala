@@ -1,12 +1,12 @@
 package controllers.todo
 
-import daos.todo.TodoPayload
+import daos.todo.TodoSelector
 import play.api.libs.json.{Json, OFormat}
 
 case class DeleteTodosRequestBody(
   isCompleted: Option[Boolean]
 ) {
-  def toTodoPayload: TodoPayload = TodoPayload(isCompleted = isCompleted)
+  def toTodoSelector: TodoSelector = TodoSelector(isCompleted = isCompleted)
 }
 
 object DeleteTodosRequestBody {

@@ -3,9 +3,7 @@ package controllers.todo
 import daos.todo.TodoPayload
 import play.api.libs.json.{Json, Reads}
 
-case class UpdateTodosRequestBody(
-  isCompleted: Option[Boolean]
-) {
+case class UpdateTodosRequestBody(isCompleted: Option[Boolean]) {
   def toTodoPayload: TodoPayload = TodoPayload(isCompleted = isCompleted)
 }
 

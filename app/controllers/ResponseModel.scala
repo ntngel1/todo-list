@@ -1,6 +1,6 @@
 package controllers
 
-import play.api.libs.json.{JsBoolean, JsNull, JsNumber, JsObject, JsString, JsValue, Json, OFormat, Writes}
+import play.api.libs.json.{JsBoolean, JsNumber, JsObject, JsString, Json, Writes}
 
 abstract class ResponseModel(val ok: Boolean)
 
