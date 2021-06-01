@@ -25,8 +25,8 @@ class TodoDaoImpl @Inject()(
   private def todos =
     reactiveMongoApi.database.map(_.collection[JSONCollection]("todos"))
 
-  def getAllTodos: EitherT[Future, DaoError, Seq[TodoModel]] = {
-    EitherT.right[DaoError](todos)
+  def getAllTodos: EitherT[Future, TodoDaoError, Seq[TodoModel]] = {
+    EitherT.right[TodoDaoError](todos)
       .semiflatMap { todos =>
         todos.find(TodoSelector(isDeleted = Option(false)), Option.empty[JsObject])
           .cursor[TodoMongoModel]()
@@ -37,12 +37,12 @@ class TodoDaoImpl @Inject()(
       }
   }
 
-  def getTodoById(id: String): EitherT[Future, DaoError, TodoModel] = {
+  def getTodoById(id: String): EitherT[Future, TodoDaoError, TodoModel] = {
     BSONObjectIDUtil.parseEither(id)
       .toEitherT[Future]
-      .leftWiden[DaoError]
+      .leftWiden[TodoDaoError]
       .flatMap { objectId =>
-        EitherT.right[DaoError](todos)
+        EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
             todos.find(TodoSelector(_id = Option(objectId), isDeleted = Option(false)), Option.empty[JsObject])
               .cursor[TodoMongoModel]()
@@ -50,14 +50,14 @@ class TodoDaoImpl @Inject()(
           }
       }
       .flatMap { todoMongoModel =>
-        EitherT.fromOption[Future](todoMongoModel, NotFoundError)
-          .leftWiden[DaoError]
+        EitherT.fromOption[Future](todoMongoModel, TodoNotFoundError)
+          .leftWiden[TodoDaoError]
       }
       .map(_.toTodoModel)
   }
 
-  def createTodo(text: String): EitherT[Future, DaoError, TodoModel] = {
-    EitherT.right[DaoError](todos)
+  def createTodo(text: String): EitherT[Future, TodoDaoError, TodoModel] = {
+    EitherT.right[TodoDaoError](todos)
       .semiflatMap { todos => // insert to-do to db
         val objectId = BSONObjectID.generate()
         todos.insert(ordered = false)
@@ -72,7 +72,7 @@ class TodoDaoImpl @Inject()(
           .map[BSONObjectID](_ => objectId)
       }
       .flatMap { objectId => // read created to-do from db
-        EitherT.right[DaoError](todos)
+        EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
             todos.find(TodoSelector(_id = Option(objectId)), Option.empty[JsObject])
               .cursor[TodoMongoModel]()
@@ -80,18 +80,18 @@ class TodoDaoImpl @Inject()(
           }
       }
       .flatMap { todoMongoModel =>
-        EitherT.fromOption[Future](todoMongoModel, NotFoundError)
-          .leftWiden[DaoError]
+        EitherT.fromOption[Future](todoMongoModel, TodoNotFoundError)
+          .leftWiden[TodoDaoError]
       }
       .map(_.toTodoModel)
   }
 
-  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, DaoError, Unit] = {
+  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {
     BSONObjectIDUtil.parseEither(id)
       .toEitherT[Future]
-      .leftWiden[DaoError]
+      .leftWiden[TodoDaoError]
       .flatMap { objectId =>
-        EitherT.right[DaoError](todos)
+        EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
             val selector = TodoSelector(_id = Option(objectId), isDeleted = Option(false))
             // FIXME: no item may be updated and no error thrown. How can we throw an error if no elements found by
@@ -106,8 +106,8 @@ class TodoDaoImpl @Inject()(
       }
   }
 
-  def updateTodos(payload: TodoPayload): EitherT[Future, DaoError, Unit] = {
-    EitherT.right[DaoError](todos)
+  def updateTodos(payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {
+    EitherT.right[TodoDaoError](todos)
       .semiflatMap { todos =>
         todos.update(ordered = false)
           .one(
@@ -122,12 +122,12 @@ class TodoDaoImpl @Inject()(
       }
   }
 
-  def deleteTodo(id: String): EitherT[Future, DaoError, Unit] = {
+  def deleteTodo(id: String): EitherT[Future, TodoDaoError, Unit] = {
     BSONObjectIDUtil.parseEither(id)
       .toEitherT[Future]
-      .leftWiden[DaoError]
+      .leftWiden[TodoDaoError]
       .flatMap { objectId =>
-        EitherT.right[DaoError](todos)
+        EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
             todos.update(ordered = false)
               .one(
@@ -143,8 +143,8 @@ class TodoDaoImpl @Inject()(
       }
   }
 
-  def deleteTodos(selector: TodoSelector): EitherT[Future, DaoError, Unit] = {
-    EitherT.right[DaoError](todos)
+  def deleteTodos(selector: TodoSelector): EitherT[Future, TodoDaoError, Unit] = {
+    EitherT.right[TodoDaoError](todos)
       .semiflatMap { todos =>
         todos.update(ordered = false)
           .one(

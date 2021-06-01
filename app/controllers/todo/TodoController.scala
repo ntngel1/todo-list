@@ -1,37 +1,38 @@
 package controllers.todo
 
 import javax.inject.Inject
-
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-
 import cats.implicits._
-import controllers.ControllerError
+import controllers.TodoControllerError
+import controllers.todo.requestbody.{CreateTodoRequestBody, DeleteTodosRequestBody, UpdateTodoRequestBody, UpdateTodosRequestBody}
 import daos.todo.TodoDao
 import models.TodoModel
 import play.api.mvc._
+import services.todo.TodoService
 import utils.ContentToResultMappingUtil._
-import utils.{ContentToResultMappingUtil, ControllerErrorToResultMapper, DaoErrorToControllerErrorMapper, JsonParsingUtil}
+import utils.{ContentToResultMappingUtil, JsonParsingUtil}
 
 class TodoController @Inject()(
   components: ControllerComponents,
+  val todoService: TodoService,
   val todoDao: TodoDao
 ) extends AbstractController(components) {
 
   def getAllTodos: Action[AnyContent] = Action.async {
     todoDao.getAllTodos
-      .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[Seq[TodoModel]]
       )
   }
 
   def getTodo(id: String): Action[AnyContent] = Action.async {
     todoDao.getTodoById(id)
-      .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+      .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[TodoModel]
       )
   }
@@ -40,11 +41,11 @@ class TodoController @Inject()(
     JsonParsingUtil.parse[CreateTodoRequestBody](request)
       .toEitherT[Future]
       .flatMap { requestBody =>
-        todoDao.createTodo(requestBody.text)
-          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+        todoService.createTodo(requestBody.text)
+          .leftMap(TodoServiceErrorToTodoControllerErrorMapper)
       }
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[TodoModel]
       )
   }
@@ -54,10 +55,10 @@ class TodoController @Inject()(
       .toEitherT[Future]
       .flatMap { requestBody =>
         todoDao.updateTodo(id, requestBody.toTodoPayload)
-          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
       }
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[Unit]
       )
   }
@@ -67,10 +68,10 @@ class TodoController @Inject()(
       .toEitherT[Future]
       .flatMap { requestBody =>
         todoDao.updateTodos(requestBody.toTodoPayload)
-          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
       }
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[Unit]
       )
   }
@@ -79,7 +80,7 @@ class TodoController @Inject()(
     todoDao.deleteTodo(id)
       .leftMap(DaoErrorToControllerErrorMapper)
       .fold(
-        ControllerErrorToResultMapper,
+        TodoControllerErrorToResultMapper,
         ContentToResultMappingUtil.map[Unit]
       )
   }
@@ -89,12 +90,13 @@ class TodoController @Inject()(
       .toEitherT[Future]
       .flatMap { requestBody =>
         todoDao.deleteTodos(requestBody.toTodoSelector)
-          .leftMap[ControllerError](DaoErrorToControllerErrorMapper)
+          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
       }
       .fold(
-        ControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit] // FIXME: maybe there is some more beautiful way like ContentToResultMapper[T]
-                                             //        but I don't know how to implement clean and nice T-parametrized object
+        TodoControllerErrorToResultMapper,
+        ContentToResultMappingUtil.map[Unit] // FIXME: maybe there is some more beautiful way to map from some content T
+                                             //  to Play Frameowork's Result like ContentToResultMapper[T] but I don't
+                                             //  know how to implement clean and nice T-parametrized object
       )
   }
 }

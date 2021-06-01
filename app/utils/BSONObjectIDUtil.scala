@@ -1,6 +1,6 @@
 package utils
 
-import daos.InvalidIdError
+import daos.todo.InvalidIdError
 import reactivemongo.bson.BSONObjectID
 
 object BSONObjectIDUtil {

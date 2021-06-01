@@ -24,7 +24,7 @@ object SuccessResponse {
 }
 
 object FailResponse {
-  def apply(error: ControllerError): FailResponse = new FailResponse(error.errorCode, error.errorMessage)
+  def apply(error: TodoControllerError): FailResponse = new FailResponse(error.errorCode, error.errorMessage)
 
   implicit def failResponseWrites: Writes[FailResponse] = (response: FailResponse) => JsObject(
     Seq(

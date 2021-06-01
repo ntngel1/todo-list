@@ -1,34 +1,27 @@
 package controllers
 
-import daos.UnknownDaoError
+import play.api.http.Status._
+import services.todo.TodoServiceError
 
-sealed abstract class ControllerError {
+sealed abstract class TodoControllerError {
   val errorCode: Int
+  val responseCode: Int
   val errorMessage: String
 }
 
-case object NoRequestBodyError extends ControllerError {
+case object NoRequestBodyError extends TodoControllerError {
   override val errorCode: Int = 1
+  override val responseCode: Int = BAD_REQUEST
   override val errorMessage: String = "No request body"
 }
 
-case object ItemNotFoundError extends ControllerError {
-  override val errorCode: Int = 2
-  override val errorMessage: String = "Unable to find item"
-}
-
-final case class DatabaseError(reason: UnknownDaoError) extends ControllerError {
-  override val errorCode: Int = 3
-  override val errorMessage: String = s"Unknown database error. ${reason.message}"
-}
-
-case class JsonBodyParsingError(message: String) extends ControllerError {
+final case class JsonBodyParsingError(message: String) extends TodoControllerError {
   override val errorCode: Int = 4
+  override val responseCode: Int = BAD_REQUEST
   override val errorMessage: String = s"Error during parsing json from request body. $message"
 }
 
-case class InvalidIdFormatError(message: String) extends ControllerError {
-  override val errorCode: Int = 5
-  override val errorMessage: String = s"Invalid id format. $message"
+final case class ServiceLayerError(override val responseCode: Int, reason: TodoServiceError) extends TodoControllerError {
+  override val errorCode: Int = reason.errorCode
+  override val errorMessage: String = reason.errorMessage
 }
-
