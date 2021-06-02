@@ -7,7 +7,7 @@ import akka.stream.Materializer
 import cats.data.EitherT
 import cats.implicits._
 import controllers.todo.TodoController
-import daos.todo.{CannotDeleteAlreadyDeletedTodoError, CannotFindTodoWithSuchId, UnknownDaoError}
+import daos.todo.UnknownDaoError
 import models.TodoModel
 import org.mockito.Mockito._
 import org.scalatestplus.mockito.MockitoSugar
@@ -472,7 +472,39 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
   }
 
   "DELETE /todos" must {
+    "respond successfully if passed data is correct" in {
+      // ARRANGE
+      val filterByIsCompleted = true
+      when(todoService.deleteTodos(filterByIsCompleted = Option(filterByIsCompleted)))
+        .thenReturn(
+          EitherT.rightT[Future, TodoServiceError](())
+        )
 
+      // ACT
+      val request = FakeRequest(DELETE, "/todos")
+        .withJsonBody(Json.obj("isCompleted" -> filterByIsCompleted))
+      val result = todoController.deleteTodos().apply(request)
+
+      // ASSERT
+      status(result) mustBe OK
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+    }
+
+    "respond successfully if no request body passed" in {
+      // ARRANGE
+      when(todoService.deleteTodos())
+        .thenReturn(
+          EitherT.rightT[Future, TodoServiceError](())
+        )
+
+      // ACT
+      val request = FakeRequest(DELETE, "/todos")
+      val result = todoController.deleteTodos().apply(request)
+
+      // ASSERT
+      status(result) mustBe OK
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+    }
   }
 }
 

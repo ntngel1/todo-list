@@ -8,7 +8,7 @@ import scala.concurrent.Future
 import cats.data.EitherT
 import cats.implicits._
 import controllers.common.ContentToResultMapper._
-import controllers.common.{ControllerError, ControllerErrorToResultMapper, NoRequestBodyError}
+import controllers.common.{ControllerErrorToResultMapper, NoRequestBodyError}
 import controllers.todo.requestbody.{CreateTodoRequestBody, DeleteTodosRequestBody, UpdateTodoRequestBody, UpdateTodosRequestBody}
 import models.TodoModel
 import play.api.mvc._
@@ -76,7 +76,7 @@ class TodoController @Inject()(
           .leftMap(TodoServiceErrorToControllerErrorMapper)
         case error => EitherT.leftT[Future, Unit](error)
       }, { requestBody =>
-        todoService.deleteTodos(filterByIsCompleted = Option(requestBody.isCompleted))
+        todoService.deleteTodos(filterByIsCompleted = requestBody.isCompleted)
           .leftMap(TodoServiceErrorToControllerErrorMapper)
       })
       .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
