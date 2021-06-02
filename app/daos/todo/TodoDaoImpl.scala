@@ -6,13 +6,12 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import cats.data.EitherT
 import cats.implicits._
-import daos._
 import models.TodoModel
 import play.api.libs.json._
 import play.modules.reactivemongo.ReactiveMongoApi
 import reactivemongo.api.Cursor
 import reactivemongo.bson.BSONObjectID
-import reactivemongo.play.json._
+import reactivemongo.play.json.compat._
 import reactivemongo.play.json.collection._
 import utils.BSONObjectIDUtil
 import utils.ReactiveMongoErrorsUtil._
@@ -75,8 +74,7 @@ class TodoDaoImpl @Inject()(
         EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
             todos.find(TodoSelector(_id = Option(objectId)), Option.empty[JsObject])
-              .cursor[TodoMongoModel]()
-              .headOption
+              .one[TodoMongoModel]
           }
       }
       .flatMap { todoMongoModel =>
@@ -93,11 +91,27 @@ class TodoDaoImpl @Inject()(
       .flatMap { objectId =>
         EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
-            val selector = TodoSelector(_id = Option(objectId), isDeleted = Option(false))
-            // FIXME: no item may be updated and no error thrown. How can we throw an error if no elements found by
-            //        given selector?
+            todos.find(TodoSelector(_id = Option(objectId)), Option.empty[JsObject])
+              .one[TodoMongoModel]
+          }
+      }
+      .flatMap { todo =>
+        EitherT.fromOption[Future](todo, TodoNotFoundError)
+          .leftWiden[TodoDaoError]
+      }
+      .flatMap { todo =>
+        if (!todo.isDeleted) EitherT.rightT[Future, TodoDaoError](todo)
+        else EitherT.leftT[Future, TodoMongoModel](CannotUpdateDeletedTodoError)
+          .leftWiden[TodoDaoError]
+      }
+      .flatMap { todo =>
+        EitherT.right[TodoDaoError](todos)
+          .semiflatMap { todos =>
             todos.update(ordered = false)
-              .one(selector, Json.obj("$set" -> payload))
+              .one(
+                TodoSelector(_id = Option(todo._id)),
+                Json.obj("$set" -> payload)
+              )
           }
       }
       .flatMap { writeResult =>

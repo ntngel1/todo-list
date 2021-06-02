@@ -1,102 +1,84 @@
 package controllers.todo
 
 import javax.inject.Inject
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+
+import cats.data.EitherT
 import cats.implicits._
-import controllers.TodoControllerError
+import controllers.common.ContentToResultMapper._
+import controllers.common.{ControllerError, ControllerErrorToResultMapper, NoRequestBodyError}
 import controllers.todo.requestbody.{CreateTodoRequestBody, DeleteTodosRequestBody, UpdateTodoRequestBody, UpdateTodosRequestBody}
-import daos.todo.TodoDao
 import models.TodoModel
 import play.api.mvc._
 import services.todo.TodoService
-import utils.ContentToResultMappingUtil._
-import utils.{ContentToResultMappingUtil, JsonParsingUtil}
+import utils.JsonParsingUtil
 
 class TodoController @Inject()(
   components: ControllerComponents,
-  val todoService: TodoService,
-  val todoDao: TodoDao
+  val todoService: TodoService
 ) extends AbstractController(components) {
 
   def getAllTodos: Action[AnyContent] = Action.async {
-    todoDao.getAllTodos
-      .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Seq[TodoModel]]
-      )
+    todoService.getAllTodos
+      .leftMap(TodoServiceErrorToControllerErrorMapper)
+      .fold(ControllerErrorToResultMapper, mapContentToResult[Seq[TodoModel]])
   }
 
   def getTodo(id: String): Action[AnyContent] = Action.async {
-    todoDao.getTodoById(id)
-      .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[TodoModel]
-      )
+    todoService.getTodoById(id)
+      .leftMap(TodoServiceErrorToControllerErrorMapper)
+      .fold(ControllerErrorToResultMapper, mapContentToResult[TodoModel])
   }
 
   def createTodo(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    JsonParsingUtil.parse[CreateTodoRequestBody](request)
+    JsonParsingUtil.parse[CreateTodoRequestBody](request.body.asJson)
       .toEitherT[Future]
       .flatMap { requestBody =>
         todoService.createTodo(requestBody.text)
-          .leftMap(TodoServiceErrorToTodoControllerErrorMapper)
+          .leftMap(TodoServiceErrorToControllerErrorMapper)
       }
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[TodoModel]
-      )
+      .fold(ControllerErrorToResultMapper, mapContentToResult[TodoModel])
   }
 
   def updateTodo(id: String): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    JsonParsingUtil.parse[UpdateTodoRequestBody](request)
+    JsonParsingUtil.parse[UpdateTodoRequestBody](request.body.asJson)
       .toEitherT[Future]
       .flatMap { requestBody =>
-        todoDao.updateTodo(id, requestBody.toTodoPayload)
-          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
+        todoService.updateTodo(id, text = requestBody.text, isCompleted = requestBody.isCompleted)
+          .leftMap(TodoServiceErrorToControllerErrorMapper)
       }
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit]
-      )
+      .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
   }
 
   def updateTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    JsonParsingUtil.parse[UpdateTodosRequestBody](request)
+    JsonParsingUtil.parse[UpdateTodosRequestBody](request.body.asJson)
       .toEitherT[Future]
       .flatMap { requestBody =>
-        todoDao.updateTodos(requestBody.toTodoPayload)
-          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
+        todoService.updateTodos(requestBody.isCompleted)
+          .leftMap(TodoServiceErrorToControllerErrorMapper)
       }
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit]
-      )
+      .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
   }
 
   def deleteTodo(id: String): Action[AnyContent] = Action.async {
-    todoDao.deleteTodo(id)
-      .leftMap(DaoErrorToControllerErrorMapper)
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit]
-      )
+    todoService.deleteTodo(id)
+      .leftMap(TodoServiceErrorToControllerErrorMapper)
+      .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
   }
 
   def deleteTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
-    JsonParsingUtil.parse[DeleteTodosRequestBody](request)
+    JsonParsingUtil.parse[DeleteTodosRequestBody](request.body.asJson)
       .toEitherT[Future]
-      .flatMap { requestBody =>
-        todoDao.deleteTodos(requestBody.toTodoSelector)
-          .leftMap[TodoControllerError](DaoErrorToControllerErrorMapper)
-      }
-      .fold(
-        TodoControllerErrorToResultMapper,
-        ContentToResultMappingUtil.map[Unit] // FIXME: maybe there is some more beautiful way to map from some content T
-                                             //  to Play Frameowork's Result like ContentToResultMapper[T] but I don't
-                                             //  know how to implement clean and nice T-parametrized object
-      )
+      .biflatMap({
+        case NoRequestBodyError => todoService.deleteTodos()
+          .leftMap(TodoServiceErrorToControllerErrorMapper)
+        case error => EitherT.leftT[Future, Unit](error)
+      }, { requestBody =>
+        todoService.deleteTodos(filterByIsCompleted = Option(requestBody.isCompleted))
+          .leftMap(TodoServiceErrorToControllerErrorMapper)
+      })
+      .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
   }
 }

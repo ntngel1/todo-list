@@ -1,6 +1,6 @@
-package controllers
+package controllers.common
 
-import play.api.libs.json.{JsBoolean, JsNumber, JsObject, JsString, Json, Writes}
+import play.api.libs.json._
 
 abstract class ResponseModel(val ok: Boolean)
 
@@ -24,7 +24,7 @@ object SuccessResponse {
 }
 
 object FailResponse {
-  def apply(error: TodoControllerError): FailResponse = new FailResponse(error.errorCode, error.errorMessage)
+  def apply(error: ControllerError): FailResponse = new FailResponse(error.errorCode, error.errorMessage)
 
   implicit def failResponseWrites: Writes[FailResponse] = (response: FailResponse) => JsObject(
     Seq(

@@ -1,11 +1,8 @@
 package controllers.todo.requestbody
 
-import daos.todo.TodoPayload
 import play.api.libs.json.{Json, Reads}
 
-case class UpdateTodosRequestBody(isCompleted: Option[Boolean]) {
-  def toTodoPayload: TodoPayload = TodoPayload(isCompleted = isCompleted)
-}
+case class UpdateTodosRequestBody(isCompleted: Boolean)
 
 object UpdateTodosRequestBody {
   implicit val updateTodosRequestBody: Reads[UpdateTodosRequestBody] = Json.reads

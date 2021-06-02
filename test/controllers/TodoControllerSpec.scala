@@ -6,7 +6,6 @@ import akka.stream.Materializer
 import cats.data.EitherT
 import cats.implicits._
 import controllers.todo.TodoController
-import daos.UnknownDaoError
 import daos.todo.{InvalidIdError, TodoDao, TodoDaoError, TodoNotFoundError, UnknownDaoError}
 import models.TodoModel
 import org.mockito.Mockito._

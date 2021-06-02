@@ -2,9 +2,9 @@ package daos.todo
 
 import models.TodoModel
 import play.api.libs.json.{Json, OFormat}
-import reactivemongo.play.json._
 import reactivemongo.bson.BSONObjectID
 import utils.BSONObjectIDUtil
+import reactivemongo.play.json._ // DO NOT REMOVE
 
 case class TodoMongoModel(
   _id: BSONObjectID,

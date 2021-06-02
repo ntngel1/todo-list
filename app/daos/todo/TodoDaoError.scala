@@ -8,6 +8,10 @@ case object TodoNotFoundError extends TodoDaoError {
   override val errorMessage: String = "Unable to find todo in database"
 }
 
+case object CannotUpdateDeletedTodoError extends TodoDaoError {
+  override val errorMessage: String = "Cannot update deleted todo"
+}
+
 final case class InvalidIdError(message: String) extends TodoDaoError {
   override val errorMessage: String = s"Invalid todo's id. $message"
 }

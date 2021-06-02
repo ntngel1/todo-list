@@ -4,7 +4,7 @@ import javax.inject.Inject
 import scala.concurrent.{ExecutionContext, Future}
 import cats.implicits._
 import cats.data.EitherT
-import daos.todo.{TodoDao, TodoPayload}
+import daos.todo.{TodoDao, TodoPayload, TodoSelector}
 import models.TodoModel
 
 class TodoService @Inject()(
@@ -30,17 +30,29 @@ class TodoService @Inject()(
     }
 
     textEitherError
-      .flatMap(todoDao.createTodo(_))
+      .flatMap { text =>
+        todoDao.createTodo(text)
+          .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
+      }
+  }
+
+  def updateTodo(id: String, text: Option[String], isCompleted: Option[Boolean]): EitherT[Future, TodoServiceError, Unit] = {
+    todoDao.updateTodo(id, TodoPayload(text = text, isCompleted = isCompleted))
       .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
   }
 
-  // DO NOT PASS TODO PAYLOAD HERE!!
-  def updateTodo(id: String, todoPayload: TodoPayload): EitherT[Future, TodoServiceError, Unit] = {
-    todoDao.updateTodo(id, todoPayload)
+  def updateTodos(isCompleted: Boolean): EitherT[Future, TodoServiceError, Unit] = {
+    todoDao.updateTodos(TodoPayload(isCompleted = Option(isCompleted)))
       .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
   }
 
-  def updateTodos(todoPayload: TodoPayload): EitherT[Future, TodoServiceError, Unit] = {
-    todoDao.updateTodos()
+  def deleteTodo(id: String): EitherT[Future, TodoServiceError, Unit] = {
+    todoDao.deleteTodo(id)
+      .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
+  }
+
+  def deleteTodos(filterByIsCompleted: Option[Boolean] = Option.empty): EitherT[Future, TodoServiceError, Unit] = {
+    todoDao.deleteTodos(TodoSelector(isCompleted = filterByIsCompleted))
+      .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
   }
 }
