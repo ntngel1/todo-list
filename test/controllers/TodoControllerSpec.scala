@@ -2,50 +2,55 @@ package controllers
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+
 import akka.stream.Materializer
 import cats.data.EitherT
 import cats.implicits._
 import controllers.todo.TodoController
-import daos.todo.{InvalidIdError, TodoDao, TodoDaoError, TodoNotFoundError, UnknownDaoError}
+import daos.todo.{CannotDeleteAlreadyDeletedTodoError, CannotFindTodoWithSuchId, UnknownDaoError}
 import models.TodoModel
 import org.mockito.Mockito._
 import org.scalatestplus.mockito.MockitoSugar
 import org.scalatestplus.play._
 import org.scalatestplus.play.guice.GuiceOneAppPerSuite
-import play.api.libs.json.{JsArray, JsFalse, JsNumber, JsObject, JsString, JsTrue}
+import play.api.libs.json.{JsArray, JsBoolean, JsFalse, JsNull, JsNumber, JsObject, JsString, JsTrue, Json}
 import play.api.mvc._
 import play.api.test.FakeRequest
 import play.api.test.Helpers._
+import services.todo._
 
 class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results with MockitoSugar {
 
   implicit lazy val materializer: Materializer = app.materializer
 
-  "GET /todos" should {
+  private val todoService = mock[TodoService]
+  private val todoController = new TodoController(stubControllerComponents(), todoService)
+
+  "GET /todos" must {
     "respond successfully with single todo" in {
-      val todoDao = mock[TodoDao]
-      when(todoDao.getAllTodos)
+      // ARRANGE
+      when(todoService.getAllTodos)
         .thenReturn(
-          EitherT.rightT[Future, TodoDaoError](Seq(TodoTestData.firstTodoModel))
+          EitherT.rightT[Future, TodoServiceError](Seq(TodoTestData.firstTodoModel))
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, "/todos")
-      val result = call(controller.getAllTodos, request)
+      val result = todoController.getAllTodos.apply(request)
 
+      // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe JsObject(Seq(
+      contentAsJson(result) mustBe Json.obj(
         "ok" -> JsTrue,
-        "content" -> JsArray(Seq(TodoTestData.firstTodoJson))
-      ))
+        "content" -> Json.arr(TodoTestData.firstTodoJson)
+      )
     }
 
     "respond successfully with multiple todos" in {
-      val todoDao = mock[TodoDao]
-
-      when(todoDao.getAllTodos)
+      // ARRANGE
+      when(todoService.getAllTodos)
         .thenReturn(
-          EitherT.rightT[Future, TodoDaoError](
+          EitherT.rightT[Future, TodoServiceError](
             Seq(
               TodoTestData.firstTodoModel,
               TodoTestData.secondTodoModel,
@@ -54,178 +59,448 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
           )
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, "/todos")
-      val result = call(controller.getAllTodos, request)
+      val result = todoController.getAllTodos.apply(request)
 
+      // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe JsObject(Seq(
+      contentAsJson(result) mustBe Json.obj(
         "ok" -> JsTrue,
-        "content" -> JsArray(Seq(
+        "content" -> Json.arr(
           TodoTestData.firstTodoJson,
           TodoTestData.secondTodoJson,
           TodoTestData.thirdTodoJson
-        ))
-      ))
+        )
+      )
     }
 
     "respond successfully with no todos" in {
-      val todoDao = mock[TodoDao]
-      when(todoDao.getAllTodos)
+      // ARRANGE
+      when(todoService.getAllTodos)
         .thenReturn(
-          EitherT.rightT[Future, TodoDaoError](Seq.empty[TodoModel])
+          EitherT.rightT[Future, TodoServiceError](Seq.empty[TodoModel])
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, "/todos")
-      val result = call(controller.getAllTodos, request)
+      val result = todoController.getAllTodos.apply(request)
 
+      // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe JsObject(Seq(
+      contentAsJson(result) mustBe Json.obj(
         "ok" -> JsTrue,
-        "content" -> JsArray(Seq.empty)
-      ))
+        "content" -> JsArray.empty
+      )
     }
 
-    "respond with error" in {
-      val todoDao = mock[TodoDao]
-      when(todoDao.getAllTodos)
+    "respond with errorCode=102 on unknown DAO error" in {
+      // ARRANGE
+      when(todoService.getAllTodos)
         .thenReturn(
-          EitherT.leftT[Future, Seq[TodoModel]](UnknownDaoError("Test error"))
+          EitherT.leftT[Future, Seq[TodoModel]](DaoLayerError(UnknownDaoError("Test error")))
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, "/todos")
-      val result = call(controller.getAllTodos, request)
+      val result = todoController.getAllTodos.apply(request)
 
+      // ASSERT
       status(result) mustBe INTERNAL_SERVER_ERROR
-      contentAsJson(result) mustBe JsObject(Seq(
-        "ok" -> JsFalse,
-        "errorCode" -> JsNumber(3),
-        "errorMessage" -> JsString("Unknown database error. Test error")
-      ))
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(102))
     }
   }
 
-  "GET /todos/:id:" should {
-    "respond successfully if id correct" in {
+  "GET /todos/:id:" must {
+    "respond successfully if id is correct and todo was found" in {
+      // ARRANGE
       val id = "e93693e2996426a688920ace"
 
-      val todoDao = mock[TodoDao]
-      when(todoDao.getTodoById(id))
+      when(todoService.getTodoById(id))
         .thenReturn(
-          EitherT.rightT[Future, TodoDaoError](TodoTestData.firstTodoModel)
+          EitherT.rightT[Future, TodoServiceError](TodoTestData.firstTodoModel)
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, s"/todos/$id")
-      val result = call(controller.getTodo(id), request)
+      val result = todoController.getTodo(id).apply(request)
 
+      // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe JsObject(Seq(
+      contentAsJson(result) mustBe Json.obj(
         "ok" -> JsTrue,
         "content" -> TodoTestData.firstTodoJson
-      ))
+      )
     }
 
-    "respond with errorCode=5 and errorMessage=\"Invalid id format. Incorrect id\" if id is incorrect" in {
+    "respond with errorCode=104 if id is incorrect" in {
+      // ARRANGE
       val id = "some-incorrect-id"
 
-      val todoDao = mock[TodoDao]
-      when(todoDao.getTodoById(id))
+      when(todoService.getTodoById(id))
         .thenReturn(
-          EitherT.leftT[Future, TodoModel](InvalidIdError("Incorrect id"))
+          EitherT.leftT[Future, TodoModel](InvalidTodoIdError(""))
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, s"/todos/$id")
-      val result = call(controller.getTodo(id), request)
+      val result = todoController.getTodo(id).apply(request)
 
+      // ASSERT
       status(result) mustBe BAD_REQUEST
-      contentAsJson(result) mustBe JsObject(Seq(
-        "ok" -> JsFalse,
-        "errorCode" -> JsNumber(5),
-        "errorMessage" -> JsString("Invalid id format. Incorrect id")
-      ))
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(104))
     }
 
-    "respond with errorCode=2 and errorMessage=\"Unable to find item\" if item wasn't found" in {
+    "respond with errorCode=101 if item wasn't found" in {
+      // ARRANGE
       val id = "da4edb8712a6c3f85f7b606f"
 
-      val todoDao = mock[TodoDao]
-      when(todoDao.getTodoById(id))
+      when(todoService.getTodoById(id))
         .thenReturn(
-          EitherT.leftT[Future, TodoModel](TodoNotFoundError)
+          EitherT.leftT[Future, TodoModel](TodoWithSuchIdNotFoundError(id))
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
+      // ACT
       val request = FakeRequest(GET, s"/todos/$id")
-      val result = call(controller.getTodo(id), request)
+      val result = todoController.getTodo(id).apply(request)
 
+      // ASSERT
       status(result) mustBe NOT_FOUND
-      contentAsJson(result) mustBe JsObject(Seq(
-        "ok" -> JsFalse,
-        "errorCode" -> JsNumber(2),
-        "errorMessage" -> JsString("Unable to find item")
-      ))
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(101))
     }
   }
 
-  "POST /todos" should {
-    "respond with created todo" in {
-      val text = "Test Todo Text" // TODO: WE NEED TO HANDLE EMPTY TEXT! 
-      val id = ""
+  "POST /todos" must {
+    "respond successfully with created todo if passed data is correct" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+      val text = "Test Todo Text"
+      val todoModel = TodoModel(id = id, text = text, isCompleted = false)
 
-      val todoDao = mock[TodoDao]
-      when(todoDao.createTodo(text))
+      when(todoService.createTodo(text))
         .thenReturn(
-          EitherT.rightT[Future, TodoDaoError](TodoModel(id = ""))
+          EitherT.rightT[Future, TodoServiceError](todoModel)
         )
 
-      val controller = new TodoController(stubControllerComponents(), todoDao)
-      val request = FakeRequest(GET, s"/todos/$id")
-      val result = call(controller.getTodo(id), request)
+      // ACT
+      val request = FakeRequest(POST, "/todos")
+        .withJsonBody(Json.obj("text" -> JsString(text)))
+      val result = todoController.createTodo().apply(request)
 
+      // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe JsObject(Seq(
+      contentAsJson(result) mustBe Json.obj(
         "ok" -> JsTrue,
-        "content" -> TodoTestData.firstTodoJson
-      ))
+        "content" -> Json.obj(
+          "id" -> JsString(id),
+          "text" -> JsString(text),
+          "isCompleted" -> JsFalse
+        )
+      )
     }
+
+    "respond with errorCode=1 if no request body passed" in {
+      // ACT
+      val request = FakeRequest(POST, "/todos")
+      val result = todoController.createTodo().apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(1))
+    }
+
+    "respond with errorCode=100 if passed text is blank" in {
+      // ARRANGE
+      val text = "Test Todo Text"
+
+      when(todoService.createTodo(text))
+        .thenReturn(
+          EitherT.leftT[Future, TodoModel](UnableToCreateTodoWithEmptyTextError)
+        )
+
+      // ACT
+      val request = FakeRequest(POST, "/todos")
+        .withJsonBody(Json.obj("text" -> JsString(text)))
+      val result = todoController.createTodo().apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(100))
+    }
+  }
+
+  "PATCH /todos/:id" must {
+    "respond successfully if passed update data is correct" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+      val text = "New Text"
+      val isCompleted = true
+
+      when(todoService.updateTodo(id, text = Option(text), isCompleted = Option(isCompleted)))
+        .thenReturn(
+          EitherT.rightT[Future, TodoServiceError](())
+        )
+
+      // ACT
+      val request = FakeRequest(PATCH, s"/todos/$id")
+        .withJsonBody(Json.obj("text" -> text, "isCompleted" -> isCompleted))
+      val result = todoController.updateTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe OK
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+    }
+
+    "respond with errorCode=104 if id is incorrect" in {
+      // ARRANGE
+      val id = "some-incorrect-id"
+      val text = "New Text"
+
+      when(todoService.updateTodo(id, text = Option(text), isCompleted = Option.empty))
+        .thenReturn(
+          EitherT.leftT[Future, Unit](InvalidTodoIdError(""))
+        )
+
+      // ACT
+      val request = FakeRequest(PATCH, s"/todos/$id")
+        .withJsonBody(Json.obj("text" -> text))
+      val result = todoController.updateTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(104))
+    }
+
+    "respond with errorCode=1 if no request body passed" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+
+      // ACT
+      val request = FakeRequest(PATCH, s"/todos/$id")
+      val result = todoController.updateTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(1))
+    }
+
+    "respond with errorCode=105 if no fields passed to update todo" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+      when(todoService.updateTodo(id, text = Option.empty, isCompleted = Option.empty))
+        .thenReturn(
+          EitherT.leftT[Future, Unit](NoFieldsPassedToUpdateTodoError)
+        )
+
+      // ACT
+      val request = FakeRequest(PATCH, s"/todos/$id")
+        .withJsonBody(Json.obj())
+      val result = todoController.updateTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(105))
+    }
+  }
+
+  "PATCH /todos" must {
+    "respond successfully if passed update data is correct" in {
+      // ARRANGE
+      val isCompleted = true
+
+      when(todoService.updateTodos(isCompleted))
+        .thenReturn(
+          EitherT.rightT[Future, TodoServiceError](())
+        )
+
+      // ACT
+      val request = FakeRequest(PATCH, "/todos")
+        .withJsonBody(Json.obj("isCompleted" -> JsBoolean(isCompleted)))
+      val result = todoController.updateTodos().apply(request)
+
+      // ASSERT
+      status(result) mustBe OK
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+    }
+
+    "respond with errorCode=1 if no request body passed" in {
+      // ACT
+      val request = FakeRequest(PATCH, "/todos")
+      val result = todoController.updateTodos().apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(1))
+    }
+
+    "respond with errorCode=4 if invalid json passed" in {
+      // ACT
+      val request = FakeRequest(PATCH, "/todos")
+        .withJsonBody(Json.obj())
+      val result = todoController.updateTodos().apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(4))
+    }
+  }
+
+  "DELETE /todos/:id" must {
+    "respond successfully if id is correct" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+
+      when(todoService.deleteTodo(id))
+        .thenReturn(
+          EitherT.rightT[Future, TodoServiceError](())
+        )
+
+      // ACT
+      val request = FakeRequest(DELETE, s"/todos/$id")
+      val result = todoController.deleteTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe OK
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+    }
+
+    "respond with errorCode=104 if id is incorrect" in {
+      // ARRANGE
+      val id = "some-incorrect-id"
+
+      when(todoService.deleteTodo(id))
+        .thenReturn(
+          EitherT.leftT[Future, Unit](InvalidTodoIdError(""))
+        )
+
+      // ACT
+      val request = FakeRequest(DELETE, s"/todos/$id")
+      val result = todoController.deleteTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(104))
+    }
+
+    "respond with errorCode=101 if todo with such id doesn't exist" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+
+      when(todoService.deleteTodo(id))
+        .thenReturn(
+          EitherT.leftT[Future, Unit](TodoWithSuchIdNotFoundError(id))
+        )
+
+      // ACT
+      val request = FakeRequest(DELETE, s"/todos/$id")
+      val result = todoController.deleteTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe NOT_FOUND
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(101))
+    }
+
+    "respond with errorCode=106 if todo with such id already deleted" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+
+      when(todoService.deleteTodo(id))
+        .thenReturn(
+          EitherT.leftT[Future, Unit](UnableToDeleteAlreadyDeletedTodoError)
+        )
+
+      // ACT
+      val request = FakeRequest(DELETE, s"/todos/$id")
+      val result = todoController.deleteTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(106))
+    }
+  }
+
+  "DELETE /todos" must {
+
   }
 }
 
 private object TodoTestData {
   val (firstTodoModel, firstTodoJson) = (
     TodoModel(id = "e93693e2996426a688920ace", text = "test-text", isCompleted = true),
-    JsObject(
-      Seq(
-        "id" -> JsString("e93693e2996426a688920ace"),
-        "text" -> JsString("test-text"),
-        "isCompleted" -> JsTrue
-      )
+    Json.obj(
+      "id" -> JsString("e93693e2996426a688920ace"),
+      "text" -> JsString("test-text"),
+      "isCompleted" -> JsTrue
     )
   )
 
   val (secondTodoModel, secondTodoJson) = (
     TodoModel(id = "test-id2", text = "test-text2", isCompleted = false),
-    JsObject(
-      Seq(
-        "id" -> JsString("test-id2"),
-        "text" -> JsString("test-text2"),
-        "isCompleted" -> JsFalse
-      )
+    Json.obj(
+      "id" -> JsString("test-id2"),
+      "text" -> JsString("test-text2"),
+      "isCompleted" -> JsFalse
     )
   )
 
   val (thirdTodoModel, thirdTodoJson) = (
     TodoModel(id = "test-id3", text = "test-text3", isCompleted = false),
-    JsObject(
-      Seq(
-        "id" -> JsString("test-id3"),
-        "text" -> JsString("test-text3"),
-        "isCompleted" -> JsFalse
-      )
+    Json.obj(
+      "id" -> JsString("test-id3"),
+      "text" -> JsString("test-text3"),
+      "isCompleted" -> JsFalse
     )
   )
 }

@@ -10,6 +10,7 @@ import models.TodoModel
 import play.api.libs.json._
 import play.modules.reactivemongo.ReactiveMongoApi
 import reactivemongo.api.Cursor
+import reactivemongo.api.commands.UpdateWriteResult
 import reactivemongo.bson.BSONObjectID
 import reactivemongo.play.json.compat._
 import reactivemongo.play.json.collection._
@@ -49,7 +50,7 @@ class TodoDaoImpl @Inject()(
           }
       }
       .flatMap { todoMongoModel =>
-        EitherT.fromOption[Future](todoMongoModel, TodoNotFoundError)
+        EitherT.fromOption[Future](todoMongoModel, CannotFindTodoWithSuchId(id))
           .leftWiden[TodoDaoError]
       }
       .map(_.toTodoModel)
@@ -78,7 +79,7 @@ class TodoDaoImpl @Inject()(
           }
       }
       .flatMap { todoMongoModel =>
-        EitherT.fromOption[Future](todoMongoModel, TodoNotFoundError)
+        EitherT.fromOption[Future](todoMongoModel, UnknownDaoError("Unable to get newly created todo from database"))
           .leftWiden[TodoDaoError]
       }
       .map(_.toTodoModel)
@@ -96,7 +97,7 @@ class TodoDaoImpl @Inject()(
           }
       }
       .flatMap { todo =>
-        EitherT.fromOption[Future](todo, TodoNotFoundError)
+        EitherT.fromOption[Future](todo, CannotFindTodoWithSuchId(id))
           .leftWiden[TodoDaoError]
       }
       .flatMap { todo =>
@@ -143,13 +144,29 @@ class TodoDaoImpl @Inject()(
       .flatMap { objectId =>
         EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
-            todos.update(ordered = false)
-              .one(
-                TodoSelector(_id = Option(objectId), isDeleted = Option(false)),
-                Json.obj("$set" -> TodoPayload(isDeleted = Some(true))),
-                multi = true
-              )
+            todos.find(TodoSelector(_id = Option(objectId)), Option.empty)
+              .one[TodoMongoModel]
           }
+      }
+      .flatMap { todoMongoModel =>
+        EitherT.fromOption[Future](todoMongoModel, CannotFindTodoWithSuchId(id))
+          .leftWiden[TodoDaoError]
+      }
+      .flatMap { todoMongoModel =>
+        if (!todoMongoModel.isDeleted) {
+          EitherT.right[TodoDaoError](todos)
+            .semiflatMap { todos =>
+              todos.update(ordered = false)
+                .one(
+                  TodoSelector(_id = Option(todoMongoModel._id), isDeleted = Option(false)),
+                  Json.obj("$set" -> TodoPayload(isDeleted = Some(true))),
+                  multi = true
+                )
+            }
+        } else {
+          EitherT.leftT[Future, UpdateWriteResult](CannotDeleteAlreadyDeletedTodoError)
+            .leftWiden[TodoDaoError]
+        }
       }
       .flatMap { writeResult =>
         if (writeResult.ok) EitherT.rightT(())
