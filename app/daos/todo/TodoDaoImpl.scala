@@ -9,7 +9,7 @@ import cats.implicits._
 import models.TodoModel
 import play.api.libs.json._
 import play.modules.reactivemongo.ReactiveMongoApi
-import reactivemongo.api.Cursor
+import reactivemongo.api.{Cursor, WriteConcern}
 import reactivemongo.api.commands.UpdateWriteResult
 import reactivemongo.bson.BSONObjectID
 import reactivemongo.play.json.compat._
@@ -85,7 +85,7 @@ class TodoDaoImpl @Inject()(
       .map(_.toTodoModel)
   }
 
-  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {
+  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, TodoModel] = {
     BSONObjectIDUtil.parseEither(id)
       .toEitherT[Future]
       .leftWiden[TodoDaoError]
@@ -108,17 +108,31 @@ class TodoDaoImpl @Inject()(
       .flatMap { todo =>
         EitherT.right[TodoDaoError](todos)
           .semiflatMap { todos =>
-            todos.update(ordered = false)
-              .one(
-                TodoSelector(_id = Option(todo._id)),
-                Json.obj("$set" -> payload)
-              )
+            todos.findAndUpdate(
+              TodoSelector(_id = Option(todo._id)),
+              Json.obj("$set" -> payload),
+              fetchNewObject = true,
+              upsert = false,
+              sort = None,
+              fields = None,
+              bypassDocumentValidation = false,
+              writeConcern = WriteConcern.Default,
+              maxTime = None,
+              collation = None,
+              arrayFilters = Seq.empty
+            )
           }
       }
-      .flatMap { writeResult =>
-        if (writeResult.ok) EitherT.rightT(())
-        else EitherT.leftT(UnknownDaoError(writeResult.formattedErrorMessage))
+      .flatMap[TodoDaoError, TodoMongoModel] { updateResult =>
+        EitherT.fromOption[Future](
+          updateResult.result[TodoMongoModel],
+          UnknownDaoError(
+            updateResult.lastError.flatMap(_.err)
+              .getOrElse("Unknown error while updating existing todo")
+          )
+        )
       }
+      .map(_.toTodoModel)
   }
 
   def updateTodos(payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {

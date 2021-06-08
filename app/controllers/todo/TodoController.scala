@@ -49,7 +49,7 @@ class TodoController @Inject()(
         todoService.updateTodo(id, text = requestBody.text, isCompleted = requestBody.isCompleted)
           .leftMap(TodoServiceErrorToControllerErrorMapper)
       }
-      .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
+      .fold(ControllerErrorToResultMapper, mapContentToResult[TodoModel])
   }
 
   def updateTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>

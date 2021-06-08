@@ -252,23 +252,31 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
   "PATCH /todos/:id" must {
     "respond successfully if passed update data is correct" in {
       // ARRANGE
-      val id = "e93693e2996426a688920ace"
-      val text = "New Text"
-      val isCompleted = true
 
-      when(todoService.updateTodo(id, text = Option(text), isCompleted = Option(isCompleted)))
+      when(
+        todoService.updateTodo(
+          TodoTestData.firstTodoModel.id,
+          text = Option(TodoTestData.firstTodoModel.text),
+          isCompleted = Option(TodoTestData.firstTodoModel.isCompleted)
+        )
+      )
         .thenReturn(
-          EitherT.rightT[Future, TodoServiceError](())
+          EitherT.rightT[Future, TodoServiceError](TodoTestData.firstTodoModel)
         )
 
       // ACT
-      val request = FakeRequest(PATCH, s"/todos/$id")
-        .withJsonBody(Json.obj("text" -> text, "isCompleted" -> isCompleted))
-      val result = todoController.updateTodo(id).apply(request)
+      val request = FakeRequest(PATCH, s"/todos/${TodoTestData.firstTodoModel.id}")
+        .withJsonBody(
+          Json.obj(
+            "text" -> TodoTestData.firstTodoModel.text,
+            "isCompleted" -> TodoTestData.firstTodoModel.isCompleted
+          )
+        )
+      val result = todoController.updateTodo(TodoTestData.firstTodoModel.id).apply(request)
 
       // ASSERT
       status(result) mustBe OK
-      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> JsNull)
+      contentAsJson(result) mustBe Json.obj("ok" -> JsTrue, "content" -> TodoTestData.firstTodoJson)
     }
 
     "respond with errorCode=104 if id is incorrect" in {
@@ -278,7 +286,7 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
 
       when(todoService.updateTodo(id, text = Option(text), isCompleted = Option.empty))
         .thenReturn(
-          EitherT.leftT[Future, Unit](InvalidTodoIdError(""))
+          EitherT.leftT[Future, TodoModel](InvalidTodoIdError(""))
         )
 
       // ACT
@@ -317,7 +325,7 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
       val id = "e93693e2996426a688920ace"
       when(todoService.updateTodo(id, text = Option.empty, isCompleted = Option.empty))
         .thenReturn(
-          EitherT.leftT[Future, Unit](NoFieldsPassedToUpdateTodoError)
+          EitherT.leftT[Future, TodoModel](NoFieldsPassedToUpdateTodoError)
         )
 
       // ACT
@@ -332,6 +340,28 @@ class TodoControllerSpec extends PlaySpec with GuiceOneAppPerSuite with Results 
       val json = contentAsJson(result).asInstanceOf[JsObject]
       json.fields must contain("ok", JsFalse)
       json.fields must contain("errorCode", JsNumber(105))
+    }
+
+    "respond with errorCode=107 if passed new text is empty" in {
+      // ARRANGE
+      val id = "e93693e2996426a688920ace"
+      when(todoService.updateTodo(id, text = Option(""), isCompleted = Option.empty))
+        .thenReturn(
+          EitherT.leftT[Future, TodoModel](UnableToMakeTodoTextEmptyError)
+        )
+
+      // ACT
+      val request = FakeRequest(PATCH, s"/todos/$id")
+        .withJsonBody(Json.obj("text" -> ""))
+      val result = todoController.updateTodo(id).apply(request)
+
+      // ASSERT
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe a[JsObject]
+
+      val json = contentAsJson(result).asInstanceOf[JsObject]
+      json.fields must contain("ok", JsFalse)
+      json.fields must contain("errorCode", JsNumber(107))
     }
   }
 

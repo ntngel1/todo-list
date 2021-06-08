@@ -13,7 +13,7 @@ trait TodoDao {
 
   def createTodo(text: String): EitherT[Future, TodoDaoError, TodoModel]
 
-  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, Unit]
+  def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, TodoModel]
 
   def updateTodos(payload: TodoPayload): EitherT[Future, TodoDaoError, Unit]
 

@@ -10,6 +10,11 @@ case object UnableToCreateTodoWithEmptyTextError extends TodoServiceError {
   override val errorMessage: String = "Unable to create todo with empty text"
 }
 
+case object UnableToMakeTodoTextEmptyError extends TodoServiceError {
+  override val errorCode: Int = 107
+  override val errorMessage: String = "Unable to make todo text empty"
+}
+
 case object UnableToDeleteAlreadyDeletedTodoError extends TodoServiceError {
   override val errorCode: Int = 106
   override val errorMessage: String = "Unable to delete todo that is already deleted"

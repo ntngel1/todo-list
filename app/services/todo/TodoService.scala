@@ -36,12 +36,14 @@ class TodoService @Inject()(
       }
   }
 
-  def updateTodo(id: String, text: Option[String], isCompleted: Option[Boolean]): EitherT[Future, TodoServiceError, Unit] = {
-    if (text.isDefined || isCompleted.isDefined) {
+  def updateTodo(id: String, text: Option[String], isCompleted: Option[Boolean]): EitherT[Future, TodoServiceError, TodoModel] = {
+    if (text.isDefined && text.getOrElse("").isEmpty) {
+      EitherT.leftT[Future, TodoModel](UnableToMakeTodoTextEmptyError)
+    } else if (text.isDefined || isCompleted.isDefined) {
       todoDao.updateTodo(id, TodoPayload(text = text, isCompleted = isCompleted))
         .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
     } else {
-      EitherT.leftT[Future, Unit](NoFieldsPassedToUpdateTodoError)
+      EitherT.leftT[Future, TodoModel](NoFieldsPassedToUpdateTodoError)
     }
   }
 
