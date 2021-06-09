@@ -47,8 +47,8 @@ class TodoService @Inject()(
     }
   }
 
-  def updateTodos(isCompleted: Boolean): EitherT[Future, TodoServiceError, Unit] = {
-    todoDao.updateTodos(TodoPayload(isCompleted = Option(isCompleted)))
+  def updateTodos(filterByIsCompleted: Option[Boolean], isCompleted: Boolean): EitherT[Future, TodoServiceError, Unit] = {
+    todoDao.updateTodos(filterByIsCompleted, TodoPayload(isCompleted = Option(isCompleted)))
       .leftMap(TodoDaoErrorToTodoServiceErrorMapper)
   }
 

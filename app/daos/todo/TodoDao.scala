@@ -15,7 +15,7 @@ trait TodoDao {
 
   def updateTodo(id: String, payload: TodoPayload): EitherT[Future, TodoDaoError, TodoModel]
 
-  def updateTodos(payload: TodoPayload): EitherT[Future, TodoDaoError, Unit]
+  def updateTodos(filterByIsCompleted: Option[Boolean], payload: TodoPayload): EitherT[Future, TodoDaoError, Unit]
 
   def deleteTodo(id: String): EitherT[Future, TodoDaoError, Unit]
 

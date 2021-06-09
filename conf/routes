@@ -2,6 +2,6 @@ GET     /todos                      controllers.todo.TodoController.getAllTodos(
 GET     /todos/:id                  controllers.todo.TodoController.getTodo(id: String)
 POST    /todos                      controllers.todo.TodoController.createTodo()
 PATCH   /todos/:id                  controllers.todo.TodoController.updateTodo(id: String)
-PATCH   /todos                      controllers.todo.TodoController.updateTodos()
+PATCH   /todos                      controllers.todo.TodoController.updateTodos(filterByIsCompleted: Option[Boolean])
 DELETE  /todos/:id                  controllers.todo.TodoController.deleteTodo(id: String)
 DELETE  /todos                      controllers.todo.TodoController.deleteTodos()

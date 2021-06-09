@@ -135,12 +135,12 @@ class TodoDaoImpl @Inject()(
       .map(_.toTodoModel)
   }
 
-  def updateTodos(payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {
+  def updateTodos(filterByIsCompleted: Option[Boolean], payload: TodoPayload): EitherT[Future, TodoDaoError, Unit] = {
     EitherT.right[TodoDaoError](todos)
       .semiflatMap { todos =>
         todos.update(ordered = false)
           .one(
-            TodoSelector(isDeleted = Option(false)),
+            TodoSelector(isCompleted = filterByIsCompleted, isDeleted = Option(false)),
             Json.obj("$set" -> payload),
             multi = true
           )

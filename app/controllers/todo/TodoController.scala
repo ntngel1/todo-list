@@ -15,10 +15,7 @@ import play.api.mvc._
 import services.todo.TodoService
 import utils.JsonParsingUtil
 
-class TodoController @Inject()(
-  components: ControllerComponents,
-  val todoService: TodoService
-) extends AbstractController(components) {
+class TodoController @Inject()(val todoService: TodoService) extends InjectedController {
 
   def getAllTodos: Action[AnyContent] = Action.async {
     todoService.getAllTodos
@@ -52,11 +49,11 @@ class TodoController @Inject()(
       .fold(ControllerErrorToResultMapper, mapContentToResult[TodoModel])
   }
 
-  def updateTodos(): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
+  def updateTodos(filterByIsCompleted: Option[Boolean]): Action[AnyContent] = Action.async { implicit request: Request[AnyContent] =>
     JsonParsingUtil.parse[UpdateTodosRequestBody](request.body.asJson)
       .toEitherT[Future]
       .flatMap { requestBody =>
-        todoService.updateTodos(requestBody.isCompleted)
+        todoService.updateTodos(filterByIsCompleted, requestBody.isCompleted)
           .leftMap(TodoServiceErrorToControllerErrorMapper)
       }
       .fold(ControllerErrorToResultMapper, mapContentToResult[Unit])
